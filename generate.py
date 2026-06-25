@@ -21,7 +21,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # ─────────────────────────────────────────────────────────────────────────────
 CONTACT = {
     "org":        "Diata Health",
-    "tagline":    "Root-cause metabolic & weight care",
+    "tagline":    "Root-cause metabolic & weight care",   # short line under the logo on the page
+    "note":       "Root-cause metabolic & weight care. Functional medicine meets medical weight loss. Founded in 2006.",  # saved-contact note
     "phone":      "(610) 520-1127",        # display format
     "phone_tel":  "+16105201127",          # dial format (no spaces)
     "email":      "hello@diatahealth.com",
@@ -44,6 +45,32 @@ def b64(path):
         return base64.b64encode(f.read()).decode("ascii")
 
 
+def make_square_logo(src="assets/logo-navy.png", out="assets/logo-square.png",
+                     size=1000, logo_frac=0.66):
+    """Center the (wide) logo on a white square so it never gets cropped by the
+    phone's square/circle contact photo, and looks small & centered in link previews.
+    Regenerates assets/logo-square.png; falls back to the committed file if Pillow
+    is unavailable so the rest of the build still works."""
+    try:
+        from PIL import Image
+    except ImportError:
+        print("  (Pillow not installed — reusing existing logo-square.png)")
+        return out
+    logo = Image.open(os.path.join(HERE, src)).convert("RGBA")
+    target_w = int(size * logo_frac)
+    target_h = round(target_w * logo.height / logo.width)
+    logo = logo.resize((target_w, target_h), Image.LANCZOS)
+    canvas = Image.new("RGBA", (size, size), (255, 255, 255, 255))
+    canvas.paste(logo, ((size - target_w) // 2, (size - target_h) // 2), logo)
+    canvas.convert("RGB").save(os.path.join(HERE, out), "PNG")
+    return out
+
+
+def vcard_escape(s):
+    """Escape special chars in a vCard text value (RFC 2426)."""
+    return s.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
+
+
 def maps_url(c):
     q = f"{c['addr_street']} {c['addr_city']} {c['addr_state']} {c['addr_zip']}"
     return "https://maps.apple.com/?q=" + q.replace(" ", "+")
@@ -62,12 +89,14 @@ def build_vcard(c, logo_b64):
         f"FN:{c['org']}",
         f"ORG:{c['org']}",
         f"TEL;TYPE=WORK,VOICE:{c['phone_tel']}",
+        # FaceTime on the same number (Apple item-group + custom label)
+        f"item1.TEL;TYPE=VOICE:{c['phone_tel']}",
+        "item1.X-ABLabel:FaceTime",
         f"EMAIL;TYPE=WORK,INTERNET:{c['email']}",
         f"ADR;TYPE=WORK:{addr}",
         f"URL;TYPE=WORK:{c['website']}",
         f"URL;TYPE=Instagram:https://www.instagram.com/{c['instagram']}",
-        f"X-SOCIALPROFILE;TYPE=instagram:https://www.instagram.com/{c['instagram']}",
-        f"NOTE:{c['tagline']}",
+        f"NOTE:{vcard_escape(c['note'])}",
         *folded,
         "END:VCARD",
     ]
@@ -111,8 +140,9 @@ def build_html(c, logo_b64):
 <meta name="description" content="{c['tagline']}">
 <meta property="og:title" content="{c['org']}">
 <meta property="og:description" content="Tap to save our contact details">
-<meta property="og:image" content="assets/logo-navy.png">
-<link rel="apple-touch-icon" href="assets/logo-navy.png">
+<meta property="og:image" content="assets/logo-square.png">
+<meta name="twitter:card" content="summary">
+<link rel="apple-touch-icon" href="assets/logo-square.png">
 <style>
   :root {{ --navy:{NAVY}; --icobg:{ICON_BG}; }}
   * {{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }}
@@ -181,12 +211,13 @@ def build_html(c, logo_b64):
 
 
 def main():
-    logo_b64 = b64(CONTACT["logo_file"])
+    square = make_square_logo()                 # white square tile → contact photo + link preview
+    photo_b64 = b64(square)                      # the saved contact's photo (fits, centered, white)
     with open(os.path.join(HERE, "diata-health.vcf"), "w", newline="") as f:
-        f.write(build_vcard(CONTACT, logo_b64))
+        f.write(build_vcard(CONTACT, photo_b64))
     with open(os.path.join(HERE, "index.html"), "w") as f:
-        f.write(build_html(CONTACT, logo_b64))
-    print("Wrote index.html and diata-health.vcf")
+        f.write(build_html(CONTACT, photo_b64))
+    print("Wrote index.html, diata-health.vcf, assets/logo-square.png")
 
 
 if __name__ == "__main__":
